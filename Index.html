@@ -1,2 +1,211 @@
-<!-- Frontend UI for Google Calendar Multi-Sync Pro -->
-<!-- Paste full content of ai_studio_code.html here -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Calendar Sync Settings</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style> [v-cloak] { display: none; } </style>
+</head>
+<body class="bg-gray-100 p-6 min-h-screen font-sans">
+
+<div id="app" v-cloak class="max-w-4xl mx-auto">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold text-gray-800">Calendar Sync</h1>
+        <div>
+            <button @click="addJob" class="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700 font-bold mr-2">+ Add Destination</button>
+            <button @click="saveSettings" :disabled="isSaving" class="bg-blue-600 text-white px-6 py-2 rounded shadow hover:bg-blue-700 font-bold disabled:opacity-50 min-w-[160px]">
+                {{ isSaving ? 'Saving & Syncing...' : 'Save Settings' }}
+            </button>
+        </div>
+    </div>
+
+    <div v-if="loading" class="text-center py-10 text-gray-500 font-medium font-lg">Loading your sync configuration...</div>
+
+    <div v-else>
+        <!-- AUTOMATION TRIGGER -->
+        <div class="mb-6 bg-white p-5 rounded-lg shadow-sm border-l-4 border-blue-500 flex justify-between items-center">
+            <div>
+                <h2 class="font-bold text-gray-700">Automation Trigger</h2>
+                <p class="text-sm text-gray-500">How often should we check for updates?</p>
+            </div>
+            <select v-model="frequency" class="border rounded p-2 bg-blue-50 font-bold text-blue-800">
+                <option value="0">Disabled (Manual only)</option>
+                <option value="15">Every 15 minutes</option>
+                <option value="30">Every 30 minutes</option>
+                <option value="60">Every 1 hour</option>
+                <option value="1440">Once a day</option>
+            </select>
+        </div>
+
+        <!-- JOBS -->
+        <div v-for="(job, jIdx) in jobs" :key="jIdx" class="bg-white rounded-lg shadow-md p-6 mb-8 border border-gray-200">
+            <div class="flex justify-between border-b pb-4 mb-4">
+                <div class="flex-1 mr-4">
+                    <label class="block text-xs font-bold uppercase text-gray-400">Destination Calendar</label>
+                    <select v-model="job.DESTINATION_CALENDAR_ID" class="w-full border rounded p-2 mt-1 bg-gray-50 font-medium text-sm">
+                        <option v-for="c in calendars" :value="c.id">{{ c.name }}</option>
+                    </select>
+                </div>
+                <div class="w-32 mr-4">
+                    <label class="block text-xs font-bold uppercase text-gray-400">Sync Window (Days)</label>
+                    <input type="number" v-model="job.SYNC_DAYS" class="w-full border rounded p-2 mt-1">
+                </div>
+                <button @click="removeJob(jIdx)" class="text-red-400 hover:text-red-600 font-bold self-end mb-2 transition text-sm">Remove Setup</button>
+            </div>
+
+            <h3 class="font-bold text-gray-400 mb-3 text-xs tracking-widest uppercase">Source Calendars</h3>
+            <div v-for="cal in getOtherCalendars(job.DESTINATION_CALENDAR_ID)" :key="cal.id" class="mb-2 border rounded-lg overflow-hidden border-gray-100 shadow-sm">
+                <div class="p-3 bg-gray-50 flex justify-between items-center">
+                    <span class="font-semibold text-gray-700">{{ cal.name }}</span>
+                    <button @click="toggleSource(job, cal)" :class="isSourceEnabled(job, cal.id) ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'" class="px-3 py-1 rounded font-bold text-xs transition">
+                        {{ isSourceEnabled(job, cal.id) ? 'ON' : 'OFF' }}
+                    </button>
+                </div>
+
+                <div v-if="isSourceEnabled(job, cal.id)" class="p-5 bg-white space-y-6">
+                    <template v-for="src in [getSource(job, cal.id)]">
+                        
+                        <!-- HEADER LINE: SYNC OPTIONS -->
+                        <div class="flex items-center justify-between bg-gray-50 p-3 rounded-md border border-gray-100">
+                            <div class="flex space-x-6 items-center">
+                                <span class="text-xs font-bold text-gray-400 uppercase mr-2">Sync Mode</span>
+                                <label class="flex items-center cursor-pointer text-sm font-medium">
+                                    <input type="radio" v-model="src.syncMode" value="full" class="mr-2 accent-blue-600"> Full
+                                </label>
+                                <label class="flex items-center cursor-pointer text-sm font-medium">
+                                    <input type="radio" v-model="src.syncMode" value="private" class="mr-2 accent-blue-600"> Private (Lock)
+                                </label>
+                                <label class="flex items-center cursor-pointer text-sm font-medium">
+                                    <input type="radio" v-model="src.syncMode" value="custom" class="mr-2 accent-blue-600"> Custom Mask
+                                </label>
+                            </div>
+                            <label class="flex items-center text-sm font-bold text-blue-600 cursor-pointer hover:bg-blue-50 px-2 py-1 rounded transition">
+                                <input type="checkbox" v-model="src.skipFreeEvents" class="mr-2 w-4 h-4 accent-blue-600"> Ignore 'Free' Events
+                            </label>
+                        </div>
+
+                        <!-- CONTENT: APPEARANCE & MASKING -->
+                        <div class="grid grid-cols-2 gap-8">
+                            
+                            <!-- LEFT: APPEARANCE -->
+                            <div class="space-y-4">
+                                <h4 class="text-xs font-bold text-gray-400 uppercase tracking-tighter">Appearance</h4>
+                                <div class="grid grid-cols-1 gap-4">
+                                    <div v-if="src.syncMode !== 'private'">
+                                        <label class="block text-xs font-bold text-gray-500 mb-1">Event Color</label>
+                                        <select v-model="src.color" class="w-full border text-sm rounded p-2 bg-white">
+                                            <option value="">Default (Calendar Color)</option>
+                                            <option v-for="c in colorOptions" :value="c.id">{{ c.name }}</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-500 mb-1">Availability Status</label>
+                                        <select v-model="src.transparencyOverride" class="w-full border text-sm rounded p-2 bg-white">
+                                            <option value="">Sync from Source</option>
+                                            <option value="busy">Force 'Busy'</option>
+                                            <option value="free">Force 'Free'</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- RIGHT: CONTENT MASKING -->
+                            <div class="space-y-4 border-l pl-8">
+                                <h4 class="text-xs font-bold text-gray-400 uppercase tracking-tighter">Content Masking</h4>
+                                
+                                <div v-if="src.syncMode === 'private'" class="text-sm text-gray-500 italic bg-gray-50 p-3 rounded leading-relaxed">
+                                    Private mode automatically strips all details and sets visibility to "Busy" for others. Note: per-event colors are only visible to you.
+                                </div>
+
+                                <div v-else-if="src.syncMode === 'full'" class="text-sm text-gray-500 italic bg-gray-50 p-3 rounded leading-relaxed">
+                                    Full sync copies all titles, descriptions, and locations as-is.
+                                </div>
+
+                                <div v-else-if="src.syncMode === 'custom'" class="space-y-4">
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-500 mb-1">Title Masking</label>
+                                        <select v-model="src.titleMode" class="w-full border text-sm rounded p-1 bg-white">
+                                            <option value="keep">Keep original</option>
+                                            <option value="prefix">Add prefix</option>
+                                            <option value="replace">Replace entirely</option>
+                                        </select>
+                                        <input v-if="src.titleMode !== 'keep'" type="text" v-model="src.titleContent" class="w-full border mt-2 p-2 text-sm rounded bg-blue-50 focus:outline-blue-200" placeholder="Title text or prefix...">
+                                    </div>
+                                    <div class="space-y-2 pt-2">
+                                        <label class="flex items-center text-sm text-gray-700 cursor-pointer"><input type="checkbox" v-model="src.stripDescription" class="mr-2 accent-blue-600"> Strip Description & URLs</label>
+                                        <label class="flex items-center text-sm text-gray-700 cursor-pointer"><input type="checkbox" v-model="src.stripLocation" class="mr-2 accent-blue-600"> Strip Location</label>
+                                        <label class="flex items-center text-sm text-gray-700 cursor-pointer"><input type="checkbox" v-model="src.stripAttachments" class="mr-2 accent-blue-600"> Strip Attachments</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const { createApp } = Vue;
+    createApp({
+        data() {
+            return {
+                loading: true, isSaving: false,
+                calendars: [], jobs: [], frequency: 0,
+                colorOptions: [
+                    { id: 1, name: "Lavender" }, { id: 2, name: "Sage" }, { id: 3, name: "Grape" },
+                    { id: 4, name: "Flamingo" }, { id: 5, name: "Banana" }, { id: 6, name: "Tangerine" },
+                    { id: 7, name: "Peacock" }, { id: 8, name: "Graphite" }, { id: 9, name: "Blueberry" },
+                    { id: 10, name: "Basil" }, { id: 11, name: "Tomato" }
+                ]
+            }
+        },
+        mounted() {
+            google.script.run.withSuccessHandler(c => {
+                this.calendars = c;
+                google.script.run.withSuccessHandler(s => {
+                    this.jobs = s.jobs;
+                    this.frequency = s.frequency;
+                    this.loading = false;
+                }).getSettings();
+            }).getAvailableCalendars();
+        },
+        methods: {
+            addJob() {
+                this.jobs.push({
+                    DESTINATION_CALENDAR_ID: "", SYNC_DAYS: 90,
+                    SYNC_TAG: `Sync-${Math.floor(Math.random()*100000)}:`,
+                    SOURCES: []
+                });
+            },
+            removeJob(i) { if(confirm("Are you sure you want to remove this sync setup?")) this.jobs.splice(i, 1); },
+            getOtherCalendars(id) { return this.calendars.filter(c => c.id !== id); },
+            isSourceEnabled(job, id) { return job.SOURCES.some(s => s.id === id); },
+            getSource(job, id) { return job.SOURCES.find(s => s.id === id); },
+            toggleSource(job, cal) {
+                if (this.isSourceEnabled(job, cal.id)) {
+                    job.SOURCES = job.SOURCES.filter(s => s.id !== cal.id);
+                } else {
+                    job.SOURCES.push({
+                        id: cal.id, label: cal.name, skipFreeEvents: true,
+                        syncMode: 'full', titleMode: 'keep', titleContent: '',
+                        stripDescription: false, stripLocation: false, stripAttachments: false,
+                        color: '', transparencyOverride: ''
+                    });
+                }
+            },
+            saveSettings() {
+                this.isSaving = true;
+                google.script.run.withSuccessHandler(() => {
+                    this.isSaving = false;
+                    alert("Settings saved and synchronization started! Your calendar will be updated in a few moments.");
+                }).saveSettings(JSON.parse(JSON.stringify(this.jobs)), parseInt(this.frequency));
+            }
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
