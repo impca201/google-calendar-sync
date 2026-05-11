@@ -122,8 +122,8 @@ function prepareEventData(config, event, tag) {
 
 function createEvent(calendar, sourceEvent, data, colorId) {
     const options = { description: data.description, location: data.location, sendInvites: false };
-    let newEvent = sourceEvent.isAllDayEvent() ? 
-        calendar.createAllDayEvent(data.title, sourceEvent.getStartTime(), options) :
+    let newEvent = sourceEvent.isAllDayEvent() ?
+        calendar.createAllDayEvent(data.title, sourceEvent.getStartTime(), sourceEvent.getEndTime(), options) :
         calendar.createEvent(data.title, sourceEvent.getStartTime(), sourceEvent.getEndTime(), options);
 
     newEvent.setVisibility(data.visibility);
@@ -143,8 +143,10 @@ function updateEvent(destEvent, sourceEvent, data, colorId) {
     if (destEvent.getTransparency() !== data.transparency) { destEvent.setTransparency(data.transparency); changed = true; }
     
     if (sourceEvent.isAllDayEvent()) {
-        if (!destEvent.isAllDayEvent() || destEvent.getAllDayStartDate().toDateString() !== sourceEvent.getAllDayStartDate().toDateString()) {
-            destEvent.setAllDayDate(sourceEvent.getStartTime());
+        if (!destEvent.isAllDayEvent() ||
+            destEvent.getAllDayStartDate().toDateString() !== sourceEvent.getAllDayStartDate().toDateString() ||
+            destEvent.getAllDayEndDate().toDateString() !== sourceEvent.getAllDayEndDate().toDateString()) {
+            destEvent.setAllDayDates(sourceEvent.getStartTime(), sourceEvent.getEndTime());
             changed = true;
         }
     } else {
