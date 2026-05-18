@@ -201,7 +201,7 @@
                 this.isSaving = true;
                 google.script.run.withSuccessHandler(() => {
                     this.isSaving = false;
-                    alert("Settings saved and synchronization started! Your calendar will be updated in a few moments.");
+                    alert("Settings saved! Your calendars have been synced.");
                 }).saveSettings(JSON.parse(JSON.stringify(this.jobs)), parseInt(this.frequency));
             }
         }
